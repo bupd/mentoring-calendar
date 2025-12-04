@@ -24,7 +24,7 @@ func main() {
 	// 2. Setup Calendar
 	cal := ical.NewCalendar()
 	cal.SetMethod(ical.MethodPublish)
-	cal.SetProdId("-//LFX Mentorship//Timeline//EN")
+	cal.SetProductId("-//LFX Mentorship//Timeline//EN")
 
 	// 3. Define Location (e.g., "Asia/Kolkata" or time.UTC)
 	// This determines the timezone for "00:01" and "23:00"
@@ -59,5 +59,14 @@ func main() {
 	}
 
 	// 6. Print to Stdout (or you could write to a file)
-	fmt.Println(cal.Serialize())
+	eventList := cal.Serialize()
+	fmt.Println(eventList)
+
+	// 7. Save to File
+	err = os.WriteFile("events.ics", []byte(eventList), 0644)
+	if err != nil {
+		log.Fatalf("Error writing events.ics: %v", err)
+	}
+
+	fmt.Println("Events saved to events.ics")
 }

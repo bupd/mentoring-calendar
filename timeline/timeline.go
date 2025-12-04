@@ -105,7 +105,7 @@ func createRangeEvents(title string, start, end time.Time) []NormalizedEvent {
 	// OPENS: Start Date 00:01 -> 01:00
 	y1, m1, d1 := start.Date()
 	openStart := time.Date(y1, m1, d1, 0, 1, 0, 0, start.Location())
-	openEnd   := time.Date(y1, m1, d1, 1, 0, 0, 0, start.Location())
+	openEnd := time.Date(y1, m1, d1, 1, 0, 0, 0, start.Location())
 
 	ev1 := NormalizedEvent{
 		Title:     fmt.Sprintf("Opens: %s", title),
@@ -116,7 +116,7 @@ func createRangeEvents(title string, start, end time.Time) []NormalizedEvent {
 	// CLOSES: End Date 23:00 -> 23:59
 	y2, m2, d2 := end.Date()
 	closeStart := time.Date(y2, m2, d2, 23, 0, 0, 0, end.Location())
-	closeEnd   := time.Date(y2, m2, d2, 23, 59, 0, 0, end.Location())
+	closeEnd := time.Date(y2, m2, d2, 23, 59, 0, 0, end.Location())
 
 	ev2 := NormalizedEvent{
 		Title:     fmt.Sprintf("Closes: %s", title),
@@ -132,7 +132,7 @@ func createDeadlineEvent(title string, date time.Time) []NormalizedEvent {
 	y, m, d := date.Date()
 
 	start := time.Date(y, m, d, 23, 0, 0, 0, date.Location())
-	end   := time.Date(y, m, d, 23, 59, 0, 0, date.Location())
+	end := time.Date(y, m, d, 23, 59, 0, 0, date.Location())
 
 	return []NormalizedEvent{{
 		Title:     fmt.Sprintf("Closes: %s", title),
