@@ -25,21 +25,28 @@ type NormalizedEvent struct {
 func ParseAndNormalizeTimeline(md string, loc *time.Location) ([]NormalizedEvent, error) {
 	scanner := bufio.NewScanner(strings.NewReader(md))
 
-	// Regex to extract | **Title** | DateText |
+	// Regex matches rows like: | **Bold Title** | Date Text |
+	// It will implicitly ignore lines like "### Timeline" or normal text.
 	tableRow := regexp.MustCompile(`^\|\s*\*\*(.+?)\*\*\s*\|\s*(.+?)\s*\|`)
 
 	var final []NormalizedEvent
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// 1. Check if line matches table format
 		if m := tableRow.FindStringSubmatch(line); m != nil {
 			title := strings.TrimSpace(m[1])
 			dateText := strings.TrimSpace(m[2])
 
+			// 2. FILTER: Skip the table header row
+			if strings.EqualFold(title, "Activity") {
+				continue
+			}
+
+			// 3. Process the valid row
 			events, err := processRow(title, dateText, loc)
 			if err != nil {
-				// Log error but continue processing other rows in a real app
-				// Here we return for debugging
 				return nil, fmt.Errorf("parsing '%s': %w", title, err)
 			}
 			final = append(final, events...)
@@ -53,17 +60,16 @@ func ParseAndNormalizeTimeline(md string, loc *time.Location) ([]NormalizedEvent
 // ----------------------------
 
 func processRow(title, dateText string, loc *time.Location) ([]NormalizedEvent, error) {
-	// 1. Detect Range vs Single
-	// Matches: "String – String" (Note: Input uses En-Dash '–', not Hyphen '-')
+	// Range Splitter (Note: uses En Dash '–')
 	rangeRegex := regexp.MustCompile(`(.+?)\s+–\s+(.+)`)
 
 	if rangeRegex.MatchString(dateText) {
-		// --- RANGE ---
+		// --- RANGE EVENT ---
 		parts := rangeRegex.FindStringSubmatch(dateText)
 		startRaw := parts[1]
 		endRaw := parts[2]
 
-		// Extract year from end date to fix start date if year is missing
+		// Smart Fix: If start date missing year, grab it from end date
 		year := extractYear(endRaw)
 		if year != "" && !strings.Contains(startRaw, year) {
 			startRaw = fmt.Sprintf("%s, %s", startRaw, year)
@@ -81,23 +87,22 @@ func processRow(title, dateText string, loc *time.Location) ([]NormalizedEvent, 
 		return createRangeEvents(title, startDate, endDate), nil
 
 	} else {
-		// --- SINGLE DATE ---
-		// Treat single dates as a deadline (Closes event)
+		// --- SINGLE DATE EVENT ---
 		date, err := parsePureDate(dateText, loc)
 		if err != nil {
 			return nil, err
 		}
-
+		// Single days are treated as deadlines
 		return createDeadlineEvent(title, date), nil
 	}
 }
 
 // ----------------------------
-// EVENT FACTORIES (Your Logic)
+// EVENT FACTORIES
 // ----------------------------
 
 func createRangeEvents(title string, start, end time.Time) []NormalizedEvent {
-	// 1. OPENS: Start Date 00:01 -> 01:00
+	// OPENS: Start Date 00:01 -> 01:00
 	y1, m1, d1 := start.Date()
 	openStart := time.Date(y1, m1, d1, 0, 1, 0, 0, start.Location())
 	openEnd   := time.Date(y1, m1, d1, 1, 0, 0, 0, start.Location())
@@ -108,7 +113,7 @@ func createRangeEvents(title string, start, end time.Time) []NormalizedEvent {
 		EndTime:   openEnd,
 	}
 
-	// 2. CLOSES: End Date 23:00 -> 23:59
+	// CLOSES: End Date 23:00 -> 23:59
 	y2, m2, d2 := end.Date()
 	closeStart := time.Date(y2, m2, d2, 23, 0, 0, 0, end.Location())
 	closeEnd   := time.Date(y2, m2, d2, 23, 59, 0, 0, end.Location())
@@ -130,7 +135,7 @@ func createDeadlineEvent(title string, date time.Time) []NormalizedEvent {
 	end   := time.Date(y, m, d, 23, 59, 0, 0, date.Location())
 
 	return []NormalizedEvent{{
-		Title:     fmt.Sprintf("Closes: %s", title), // Or just title if you prefer
+		Title:     fmt.Sprintf("Closes: %s", title),
 		StartTime: start,
 		EndTime:   end,
 	}}
@@ -141,35 +146,24 @@ func createDeadlineEvent(title string, date time.Time) []NormalizedEvent {
 // ----------------------------
 
 func parsePureDate(raw string, loc *time.Location) (time.Time, error) {
-	// 1. Clean the string. Remove stuff like "11AM PST (19:00 UTC)"
-	// We only want "Wednesday, January 7, 2026"
-	// Regex: Stop at the year (4 digits)
-	cleanRegex := regexp.MustCompile(`^[A-Za-z]+, [A-Za-z]+ \d{1,2}, \d{4}`)
+	// Remove specific times like "11AM PST" or "(19:00 UTC)"
+	// We want to extract just the date part: "Month Day, Year"
+
+	// Regex looks for Month + Day + Year (e.g., "January 20, 2026")
+	// It deliberately ignores the text after the year
+	cleanRegex := regexp.MustCompile(`[A-Za-z]+ \d{1,2}, \d{4}`)
 
 	clean := cleanRegex.FindString(raw)
 	if clean == "" {
-		// Fallback: maybe it doesn't have the Day name "January 7, 2026"
-		cleanRegex2 := regexp.MustCompile(`^[A-Za-z]+ \d{1,2}, \d{4}`)
-		clean = cleanRegex2.FindString(raw)
+		return time.Time{}, fmt.Errorf("unable to find valid date in: %s", raw)
 	}
 
-	if clean == "" {
-		// Last resort: try the raw string (might handle simple cases)
-		clean = raw
+	// Try parsing
+	t, err := time.ParseInLocation("January 2, 2006", clean, loc)
+	if err != nil {
+		return time.Time{}, err
 	}
-
-	layouts := []string{
-		"Monday, January 2, 2006", // Full format
-		"January 2, 2006",         // Short format
-	}
-
-	for _, l := range layouts {
-		if t, err := time.ParseInLocation(l, clean, loc); err == nil {
-			return t, nil
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("unable to parse date: %s", raw)
+	return t, nil
 }
 
 func extractYear(s string) string {
