@@ -2,70 +2,71 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"time"
 
+	// Update with your actual path
+
 	ical "github.com/arran4/golang-ical"
+	"github.com/bupd/mentoring-calendar/timeline"
+	"github.com/google/uuid"
 )
 
-// func main() {
-// 	i := ics.NewCalendarFor("Mozilla.org/NONSGML Mozilla Calendar V1.1")
-// 	tz := i.AddTimezone("Europe/Berlin")
-// 	tz.AddProperty(ics.ComponentPropertyExtended("TZINFO"), "Europe/Berlin[2024a]")
-// 	tzstd := tz.AddStandard()
-// 	tzstd.AddProperty(ics.ComponentProperty(ics.PropertyTzoffsetto), "+010000")
-// 	tzstd.AddProperty(ics.ComponentProperty(ics.PropertyTzoffsetfrom), "+005328")
-// 	tzstd.AddProperty(ics.ComponentProperty(ics.PropertyTzname), "Europe/Berlin(STD)")
-// 	tzstd.AddProperty(ics.ComponentProperty(ics.PropertyDtstart), "18930401T000000")
-// 	tzstd.AddProperty(ics.ComponentProperty(ics.PropertyRdate), "18930401T000000")
-// 	vEvent := i.AddEvent("d23cef0d-9e58-43c4-9391-5ad8483ca346")
-// 	vEvent.AddProperty(ics.ComponentPropertyCreated, "20240929T120640Z")
-// 	vEvent.AddProperty(ics.ComponentPropertyLastModified, "20240929T120731Z")
-// 	vEvent.AddProperty(ics.ComponentPropertyDtstamp, "20240929T120731Z")
-// 	vEvent.AddProperty(ics.ComponentPropertySummary, "Test Event")
-// 	vEvent.AddProperty(ics.ComponentPropertyDtStart, "20240929T144500", ics.WithTZID("Europe/Berlin"))
-// 	vEvent.AddProperty(ics.ComponentPropertyDtEnd, "20240929T154500", ics.WithTZID("Europe/Berlin"))
-// 	vEvent.AddProperty(ics.ComponentPropertyTransp, "OPAQUE")
-// 	vEvent.AddProperty(ics.ComponentPropertyLocation, "Github")
-// 	uri := &url.URL{
-// 		Scheme: "data",
-// 		Opaque: "text/html,I%20want%20a%20custom%20linkout%20for%20Thunderbird.%3Cbr%3EThis%20is%20the%20Github%20%3Ca%20href%3D%22https%3A%2F%2Fgithub.com%2Farran4%2Fgolang-ical%2Fissues%2F97%22%3EIssue%3C%2Fa%3E.",
-// 	}
-// 	vEvent.AddProperty(ics.ComponentPropertyDescription, "I want a custom linkout for Thunderbird.\nThis is the Github Issue.", ics.WithAlternativeRepresentation(uri))
-// 	fmt.Println(i.Serialize())
-// }
-//
-// package main
-//
-// import (
-//     "github.com/arran4/golang-ical"
-//     "time"
-// )
-
 func main() {
+	// 1. Read the Markdown file
+	data, err := os.ReadFile("events.md")
+	if err != nil {
+		log.Fatalf("Error reading events.md: %v", err)
+	}
+	markdownContent := string(data)
+
+	// 2. Setup Calendar
 	cal := ical.NewCalendar()
 	cal.SetMethod(ical.MethodPublish)
+	cal.SetProductId("-//LFX Mentorship//Timeline//EN")
 
-	// -------------- NEW: UID for this event --------------
-	event := cal.AddEvent("sample-event-first-20251205T093000Z") // CHANGED UID
+	// 3. Define Location (e.g., "Asia/Kolkata" or time.UTC)
+	// This determines the timezone for "00:01" and "23:00"
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		log.Println("Warning: Could not load timezone, falling back to UTC")
+		loc = time.UTC
+	}
 
-	// -------------- NEW: DTSTAMP / CREATED / MODIFIED --------------
-	stamp := time.Date(2025, 12, 5, 9, 30, 0, 0, time.UTC) // CHANGED DTSTAMP
-	event.SetDtStampTime(stamp)
-	event.SetCreatedTime(stamp)
-	event.SetModifiedAt(stamp)
-	cal.SetXPublishedTTL(time.Hour.String())
+	// 4. Parse Timeline
+	events, err := timeline.ParseAndNormalizeTimeline(markdownContent, loc)
+	if err != nil {
+		log.Fatalf("Failed to parse timeline: %v", err)
+	}
 
-	// -------------- NEW: Event time (3 PM – 4 PM IST) --------------
-	kolkata, _ := time.LoadLocation("Asia/Kolkata") // CHANGED timezone
+	// 5. Generate iCal Events
+	now := time.Now()
 
-	start := time.Date(2025, 12, 5, 15, 0, 0, 0, kolkata) // CHANGED start time
-	end := time.Date(2025, 12, 5, 16, 0, 0, 0, kolkata)   // CHANGED end time
+	for _, evt := range events {
+		uid := uuid.New().String()
+		event := cal.AddEvent(uid)
 
-	event.SetStartAt(start)
-	event.SetEndAt(end)
+		event.SetDtStampTime(now)
+		event.SetCreatedTime(now)
+		event.SetModifiedAt(now)
 
-	// -------------- NEW: Summary & Description --------------
-	event.SetSummary("Sample Event First")
-	event.SetDescription("This is a sample mentoring event.")
-	fmt.Println(cal.Serialize())
+		event.SetStartAt(evt.StartTime)
+		event.SetEndAt(evt.EndTime)
+
+		event.SetSummary(evt.Title)
+		event.SetDescription("Generated from LFX Timeline")
+	}
+
+	// 6. Print to Stdout (or you could write to a file)
+	eventList := cal.Serialize()
+	fmt.Println(eventList)
+
+	// 7. Save to File
+	err = os.WriteFile("events.ics", []byte(eventList), 0644)
+	if err != nil {
+		log.Fatalf("Error writing events.ics: %v", err)
+	}
+
+	fmt.Println("Events saved to events.ics")
 }
