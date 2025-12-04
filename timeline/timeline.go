@@ -131,8 +131,8 @@ func createDeadlineEvent(title string, date time.Time) []NormalizedEvent {
 	// Single Day logic: "Closes" from 23:00 -> 23:59
 	y, m, d := date.Date()
 
-	start := time.Date(y, m, d, 23, 0, 0, 0, date.Location())
-	end := time.Date(y, m, d, 23, 59, 0, 0, date.Location())
+	start := time.Date(y, m, d, 0, 1, 0, 0, date.Location())
+	end := time.Date(y, m, d, 01, 0, 0, 0, date.Location())
 
 	return []NormalizedEvent{{
 		Title:     fmt.Sprintf("Closes: %s", title),
